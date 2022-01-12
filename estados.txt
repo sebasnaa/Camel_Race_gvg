@@ -1,0 +1,41 @@
+Compruebo si estoy en la fila con menos obstaculos
+Si es el caso devuelvo int estado = 0
+
+Si la fila con menos obstaculo esta en una fila menor donde estoy estado = 1 //hacia arriba
+
+Si la fila con menos obstaculo esta en una fila mayor donde estoy estado = 2 //hacia abajo
+
+teniendo este estado 
+
+	si estado == 0{
+		if (hueco derecha)
+			derecha
+		// es posible que nuca tenga obstcaulo derecha siempre busca mayor espacio
+		if(obstaculo derecha y hueco arriba)
+			hueco arriba
+		if(obstaculo derecha y hueco abajo)
+			hueco abajo
+	}
+
+	si estado == 1{
+
+		//caso hueco derecha y arriba ?? pensar
+		//debo subir
+		if(hueco arriba)
+			hueco arriba
+		if(hueco derecha)
+			hueco derecha
+		
+	}
+
+	si estado == 2{
+		//debe bajar
+		if(hueco abajo)
+			hueco abajo
+		if(hueco derecha)
+			hueco derecha		
+
+	}
+
+
+//primera prueba beneficio mas el subir o bajr cunado no esoty en la fila mejor
