@@ -9,6 +9,6 @@
 	<classpathentry kind="lib" path="clients/gson-2.6.2.jar"/>
 	<classpathentry kind="lib" path="clients/GVGAI-PythonClient/src/lib/gson-2.8.0.jar"/>
 	<classpathentry kind="lib" path="gson-2.6.2.jar"/>
-	<classpathentry kind="lib" path="src/qlearning/lib/jfreechart-1.5.0.jar"/>
+	<classpathentry kind="lib" path="C:/Users/sebas/Desktop/EW/Entrega_ML_CR/src/ql/lib/jfreechart-1.5.0.jar"/>
 	<classpathentry kind="output" path="bin"/>
 </classpath>

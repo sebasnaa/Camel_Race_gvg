@@ -1,8 +1,13 @@
 package tracks.singlePlayer;
 
+
+import java.awt.Desktop;
+import java.io.File;
+import java.io.IOException;
 import java.util.Random;
 
-import qlearning.StateManager;
+import ql.ImagenGrafico;
+import ql.Controlador;
 import tools.Utils;
 import tracks.ArcadeMachine;
 
@@ -10,15 +15,15 @@ public class Test {
 
 	public static void main(String[] args) {
 
-		String QLearningTraining = "qlearning.TrainingAgent";
-		String QLearningTesting = "qlearning.TestingAgent";
+		String agenteEntrenamiento = "ql.AgenteEntrenamiento";
+		String agenteTest = "ql.AgenteTest";
 
 		// Load available games
 		String spGamesCollection = "examples/all_games_sp.csv";
 		String[][] games = Utils.readGames(spGamesCollection);
 
 		// Game settings
-		boolean visuals = true;
+		boolean visuals;
 		int seed = new Random().nextInt();
 
 		// Game and level to play
@@ -29,76 +34,102 @@ public class Test {
 
 		String recordActionsFile = null;// "actions_" + games[gameIdx] + "_lvl"
 
-		int levelIdx = 5; // level names from 0 to 4 (game_lvlN.txt).
+		int levelIdx = 0; // level names from 0 to 4 (game_lvlN.txt).
 		String level1 = game.replace(gameName, gameName + "_lvl" + levelIdx);
-		StateManager stateManager;
+		Controlador controlador;
 
 		boolean training = false; // Modo entrenamiento, crea una nueva tabla Q y juega M partidas aleatorias
-		boolean verbose = false; // Mostrar informacion de la partida mientras se ejecuta
-		boolean probarNiveles = false;
+		boolean probarNiveles = true;
+		boolean probarNivel = false;
+		boolean grafica = false;
+
+		if (training) // Crea la tabla Q a random y juega partidas con acciones aleatorias y sobre la
+						// tablaQ
+		{
+			visuals = false;
+			boolean isTablaQRandom = true;
+			controlador = new Controlador(isTablaQRandom);
+			Controlador.numPartidasEntrenamiento = 100;
+
+			double[] Y = null;
+			double[] X = null;
+			ImagenGrafico graficaT = null;
+
+			if (grafica) {
+				graficaT = new ImagenGrafico();
+
+				X = new double[Controlador.numPartidasEntrenamiento]; // Epoca
+				Y = new double[Controlador.numPartidasEntrenamiento]; // Resultado Ticks
+
+				for (int i = 0; i < X.length; i++) {
+					X[i] = i;
+				}
+			}
+
+			for (Controlador.partidaActual = 1; Controlador.partidaActual <= Controlador.numPartidasEntrenamiento; Controlador.partidaActual++) {
+				levelIdx = new Random().nextInt(5);
+				level1 = game.replace(gameName, gameName + "_lvl" + levelIdx);
+				System.out.println("\t\t\t\t\t\t\t\t\t\tIteración " + Controlador.partidaActual + " / "
+						+ Controlador.numPartidasEntrenamiento);
+				System.out.println("\t\t\t\t\t\t\t\t\t\tlevel: " + levelIdx);
+				double ticks = ArcadeMachine.runOneGame(game, level1, visuals, agenteEntrenamiento, recordActionsFile,
+						seed, 0)[2];
+				if (grafica) {
+					Y[Controlador.partidaActual - 1] = ticks;
+				}
+			}
+
+			controlador.saveQTable();
+
+			// Creamos grafica segun los ticks necesarios para acabar el juego
+			if (grafica) {
+				String fecha = java.time.LocalDate.now().toString();
+				String ficheroT = fecha + "_PoliticaRandom.jpeg";
+
+				graficaT.plot(X, Y, "-r", 2.0f, "TICKS");
+				graficaT.RenderPlot();
+				graficaT.title("Resultado partida en Ticks / Epoca de Training");
+				graficaT.xlim(1, Controlador.numPartidasEntrenamiento);
+				graficaT.ylim(1, 550);
+				graficaT.xlabel("Epoca de Training");
+				graficaT.ylabel("Resultado Ticks partida");
+				graficaT.saveas(ficheroT, 640, 480);
+
+				File file = new File(ficheroT);
+				try {
+					Desktop.getDesktop().open(file);
+				} catch (IOException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+
+			}
+
+		}
+
+		if (probarNivel) {
+			controlador = new Controlador("TablaQT.csv");
+			ArcadeMachine.runOneGame(game, level1, true, agenteTest, recordActionsFile, seed, 0);
+		}
 
 		if (probarNiveles) // Probar todos los niveles
 		{
 			visuals = true;
 			double[] ticksPartidas = new double[7];
 
-			stateManager = new StateManager("TablaQ.csv", verbose);
-			for (int i = 0; i <=6; i++) {
+			controlador = new Controlador("TablaQT.csv");
+			for (int i = 0; i < 5; i++) {
 
 				levelIdx = i; // level names from 0 to 4 (game_lvlN.txt).
 				level1 = game.replace(gameName, gameName + "_lvl" + levelIdx);
-				// QLearningTesting QLearningTraining
-				ticksPartidas[i] = ArcadeMachine.runOneGame(game, level1, visuals, QLearningTesting, recordActionsFile,
-						seed, 0)[2];
+				ticksPartidas[i] = ArcadeMachine.runOneGame(game, level1, true, agenteTest, recordActionsFile, seed,
+						0)[2];
 			}
 
-		}
-
-		if (training) // Crea la tabla Q a random y juega partidas con acciones aleatorias
-		{
-			visuals = false;
-			boolean testingAfterTraining = false; // Probar todos los niveles despues del entrenamiento
-			boolean randomTablaQ = true; // Verdadero: crea la tabla Q con valores random, si no, a cero
-			stateManager = new StateManager(randomTablaQ, false);
-			StateManager.numIteraciones = 100; // Numero de partidas a jugar
-
-			for (StateManager.iteracionActual = 1; StateManager.iteracionActual <= StateManager.numIteraciones; StateManager.iteracionActual++) {
-				levelIdx = new Random().nextInt(7); // 5 // level names from 0 to 4 (game_lvlN.txt).
-				level1 = game.replace(gameName, gameName + "_lvl" + levelIdx);
-				System.out.println("\t\t\t\t\t\t\t\t\t\tIteración " + StateManager.iteracionActual + " / "
-						+ StateManager.numIteraciones);
-				System.out.println("\t\t\t\t\t\t\t\t\t\tlevel: " + levelIdx);
-				ArcadeMachine.runOneGame(game, level1, visuals, QLearningTraining, recordActionsFile, seed, 0);
-
-			}
-
-			stateManager.saveQTable();
-
-			if (testingAfterTraining) // Probar todos los niveles
-			{
-				visuals = true;
-				double[] ticksPartidas = new double[7];
-
-				stateManager = new StateManager("TablaQ.csv", verbose);
-				for (int i = 0; i <= 4; i++) {
-
-					levelIdx = i; // level names from 0 to 4 (game_lvlN.txt).
-					level1 = game.replace(gameName, gameName + "_lvl" + levelIdx);
-					// QLearningTesting QLearningTraining
-					ticksPartidas[i] = ArcadeMachine.runOneGame(game, level1, visuals, QLearningTesting,
-							recordActionsFile, seed, 0)[2];
-				}
-
-			}
-		} else // Test
-		{
-			stateManager = new StateManager("TablaQ.csv", false);
-			ArcadeMachine.runOneGame(game, level1, visuals, QLearningTesting, recordActionsFile, seed, 0);
 		}
 
 //		stateManager.getContadoresEstados();
-//
-//		StateManager.pintaQTableResumen();
+		Controlador.pintaQTableResumen();
 
 	}
 }
