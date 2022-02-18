@@ -19,11 +19,15 @@ public class Controlador {
 	public static int[][] contadorPasos;
 	public static int distanciaAnterior = 10000;
 
+	public static double distanciaJugadortoChungo = Double.MAX_VALUE;
+	public static double distanciaMenorJugadorInfectado = Double.MAX_VALUE;
+	public static int numeroInfectados = Integer.MAX_VALUE;
+
 	/* Estados definidos */
 	public static enum ESTADOS {
 
-		HUECO_DERECHA_OPTIMO(0), HUECO_IZQUIERDA_OPTIMO(0), HUECO_DERECHA(0), HUECO_IZQUIERDA(0), HUECO_ARRIBA(0),
-		HUECO_ABAJO(0), OBSTACULO_ARRIBA(0), NIL(0);
+		POSICION_PERFECTA(0), POSICION_SEGURA(0), POSICION_NO_SEGURA(0), TRANSICION_POSITIVA(0), TRANSICION_NEGATIVA(0),
+		REDUCE_DIST_INFECTADO(0), AUMENTA_DIST_INFECTADO(0), REDUCE_INFECTADOS(0), INFECTADO_CERCA(0), NIL(0);
 
 		private int contador; // Determina el numero de veces que se encuentra en un estado
 
@@ -55,8 +59,8 @@ public class Controlador {
 	}
 
 	// Acciones
-	public static final ACTIONS[] ACCIONES = { ACTIONS.ACTION_UP, ACTIONS.ACTION_DOWN, ACTIONS.ACTION_LEFT,
-			ACTIONS.ACTION_RIGHT };
+	public static final ACTIONS[] ACCIONES = { ACTIONS.ACTION_USE, ACTIONS.ACTION_UP, ACTIONS.ACTION_DOWN,
+			ACTIONS.ACTION_LEFT, ACTIONS.ACTION_RIGHT };
 
 	// TABLA R
 	public static HashMap<EstadoAccion, Double> R;
@@ -102,17 +106,21 @@ public class Controlador {
 			}
 		}
 
-		R.put(new EstadoAccion(ESTADOS.HUECO_DERECHA_OPTIMO, ACTIONS.ACTION_RIGHT), 1000.0);
-		R.put(new EstadoAccion(ESTADOS.HUECO_IZQUIERDA_OPTIMO, ACTIONS.ACTION_LEFT), 1000.0);
+		for (ACTIONS a : ACCIONES) {
+			R.put(new EstadoAccion(ESTADOS.POSICION_PERFECTA, a), 100.0);
+			R.put(new EstadoAccion(ESTADOS.POSICION_SEGURA, a), 20.0);
+			R.put(new EstadoAccion(ESTADOS.POSICION_NO_SEGURA, a), -30.0);
+			R.put(new EstadoAccion(ESTADOS.TRANSICION_POSITIVA, a), 50.0);
+			R.put(new EstadoAccion(ESTADOS.TRANSICION_NEGATIVA, a), -300.0);
+			R.put(new EstadoAccion(ESTADOS.REDUCE_DIST_INFECTADO, a), 20.0);
+			R.put(new EstadoAccion(ESTADOS.AUMENTA_DIST_INFECTADO, a), -20.0);
+		}
 
-		R.put(new EstadoAccion(ESTADOS.HUECO_DERECHA, ACTIONS.ACTION_RIGHT), 100.0);
-		R.put(new EstadoAccion(ESTADOS.HUECO_IZQUIERDA, ACTIONS.ACTION_LEFT), 100.0);
-		R.put(new EstadoAccion(ESTADOS.HUECO_ABAJO, ACTIONS.ACTION_DOWN), 100.0);
-		R.put(new EstadoAccion(ESTADOS.HUECO_ARRIBA, ACTIONS.ACTION_UP), 100.0);
-
-		// penalizaciones
-		R.put(new EstadoAccion(ESTADOS.OBSTACULO_ARRIBA, ACTIONS.ACTION_UP), -100.0);
-
+		R.put(new EstadoAccion(ESTADOS.INFECTADO_CERCA, ACTIONS.ACTION_USE), 200.0);
+		R.put(new EstadoAccion(ESTADOS.INFECTADO_CERCA, ACTIONS.ACTION_DOWN), -10.0);
+		R.put(new EstadoAccion(ESTADOS.INFECTADO_CERCA, ACTIONS.ACTION_UP), -10.0);
+		R.put(new EstadoAccion(ESTADOS.INFECTADO_CERCA, ACTIONS.ACTION_RIGHT), -10.0);
+		R.put(new EstadoAccion(ESTADOS.INFECTADO_CERCA, ACTIONS.ACTION_LEFT), -10.0);
 	}
 
 	/*
@@ -255,23 +263,34 @@ public class Controlador {
 		}
 
 		return accionMaxQ;
+
 	}
 
 	public static char[][] getMapa(StateObservation so) {
+
+		// itype 0 -> muros
+		// itype -> 1 Jugador
+		// itype -> 4 personaje infectado
+		// itype -> 6 personaje bueno
+		// itype -> 7 tio chungo
 
 		char[][] res = new char[so.getWorldDimension().width / so.getBlockSize()][so.getWorldDimension().height
 				/ so.getBlockSize()];
 
 		for (int j = 0; j < so.getObservationGrid()[0].length; j++) {
 
-			for (int i = 1; i < so.getObservationGrid().length; i++) {
+			for (int i = 0; i < so.getObservationGrid().length; i++) {
 				if (so.getObservationGrid()[i][j].size() != 0) {
-					if (so.getObservationGrid()[i][j].get(0).category == 4) {
+					if (so.getObservationGrid()[i][j].get(0).itype == 0) {
 						res[i][j] = '#';
-					} else if (so.getObservationGrid()[i][j].get(0).category == 0) {
+					} else if (so.getObservationGrid()[i][j].get(0).itype == 1) {
 						res[i][j] = 'J';
-					} else if (so.getObservationGrid()[i][j].get(0).category == 2) {
-						res[i][j] = 'M';
+					} else if (so.getObservationGrid()[i][j].get(0).itype == 4) {
+						res[i][j] = 'E';
+					} else if (so.getObservationGrid()[i][j].get(0).itype == 6) {
+						res[i][j] = 'S';
+					} else if (so.getObservationGrid()[i][j].get(0).itype == 7) {
+						res[i][j] = 'P';
 					} else {
 						res[i][j] = '-';
 					}
@@ -286,150 +305,50 @@ public class Controlador {
 
 	}
 
-	public static int distanciaMeta(StateObservation obs) {
-		double posJugador[] = getPosicionJugador(obs);
-		ArrayList<Observation>[] portalPosition = obs.getPortalsPositions();
-
-		int Xjugador = (int) posJugador[0];
-		int Xportal = (int) (portalPosition[0].get(0).position.x / obs.getBlockSize());
-
-		int diff = Math.abs((Xjugador - Xportal));
-
-		return diff;
-	}
-
-	public static ESTADOS getEstadoFuturo(StateObservation obs, ACTIONS action, int distanciaJP) {
+	public static ESTADOS getEstadoFuturo(StateObservation obs, ACTIONS action, int numeroInfectados,
+			double distanciaJugadortoChungo, double distanciaMenorJugadorInfectado) {
 
 		obs.advance(action);
-		return getEstado(obs, getMapa(obs), distanciaJP);
+		return getEstado(obs, getMapa(obs), numeroInfectados, distanciaJugadortoChungo, distanciaMenorJugadorInfectado);
 	}
 
-	public static ESTADOS getEstado(StateObservation obs, char[][] mapaObstaculos, int distanciaJP) {
+	public static ESTADOS getEstado(StateObservation obs, char[][] mapaObstaculos, int numeroInfectados,
+			double distanciaJugadortoChungo, double distanciaMenorJugadorInfectado) {
 
-		boolean avanza = false;
-		if (Controlador.distanciaAnterior > distanciaJP) {
-//			System.out.println("EL camello avanza");
-			Controlador.distanciaAnterior = distanciaJP;
-			avanza = true;
-		} else {
-			avanza = false;
-//			System.out.println("El camello no avanza");
-		}
+		ESTADOS estadoFinal;
 
-		ArrayList<Observation>[] portalPosition = obs.getPortalsPositions();
-		double posicionCamello[] = getPosicionJugador(obs);
+		// num de infectados actuales tras la transicion
+		int numeroInfectadosActuales = numeroInfectados(obs);
+		double distanciaInfectadoActual = getDistanciaJugadorNPCCercano(obs);
+		double distanciatoChungo = getDistanciaJugadorNPCCercano(obs);
 
-		int yCamello = (int) posicionCamello[1];
-		int xCamello = (int) posicionCamello[0];
-
-		if (portalPosition[0].get(0).position.x > 20) {
-			// portal se encuentra en la derecha
-			metaDerecha = true;
-		} else {
-			metaDerecha = false;
-		}
-
-		if (!obs.isGameOver()) {
-			char[][] mapa = getMapa(obs);
-			int estadoEspacioFilasDerecha = caminoMayorDesplazamientoDerecha(obs);
-			int estadoEspacioFilasIzquierda = caminoMayorDesplazamientoIzquieda(obs);
-			if (metaDerecha) {
-
-				if (estadoEspacioFilasDerecha == 0) {
-
-					if (mapa[xCamello + 1][yCamello] != '#') {
-//						System.out.println("Hueco derecha");
-						return ESTADOS.HUECO_DERECHA_OPTIMO;
-					}
-					if (mapa[xCamello + 1][yCamello] == '#' && mapa[xCamello][yCamello - 1] != '#') {
-						return ESTADOS.HUECO_ARRIBA;
-//						System.out.println("Obstaculo derecha y hueco arriba");
-					}
-					if (mapa[xCamello + 1][yCamello] == '#' && mapa[xCamello][yCamello + 1] != '#') {
-						return ESTADOS.HUECO_ABAJO;
-//						System.out.println("Obstaculo derecha  y hueco abajo");
-					}
-
-				}
-
-				if (estadoEspacioFilasDerecha == 1) {
-
-					// el mejor esta arriba
-
-					if (mapa[xCamello][yCamello - 1] != '#') {
-//						System.out.println("Hueco Arriba");
-						return ESTADOS.HUECO_ARRIBA;
-					}
-					if (mapa[xCamello + 1][yCamello] != '#') {
-//						System.out.println("Hueco derecha");
-						return ESTADOS.HUECO_DERECHA;
-					}
-
-//					
-
-				}
-
-				if (estadoEspacioFilasDerecha == 2) {
-					if (mapa[xCamello][yCamello + 1] != '#') {
-//						System.out.println("Hueco Abajo");
-						return ESTADOS.HUECO_ABAJO;
-					}
-
-					if (mapa[xCamello + 1][yCamello] != '#') {
-//						System.out.println("Hueco derecha");
-						return ESTADOS.HUECO_DERECHA;
-					}
-
-				}
-
+		if (numeroInfectadosActuales < numeroInfectados) {
+			//if(sentido es igual al infectado then 
+			if (distanciaInfectadoActual < 5) {
+				return ESTADOS.INFECTADO_CERCA;
 			}
+			return ESTADOS.TRANSICION_POSITIVA;
+		} else {
+			if (numeroInfectadosActuales > numeroInfectados) {
+				if (distanciaInfectadoActual < 5) {
+					return ESTADOS.INFECTADO_CERCA;
+				}
+				return ESTADOS.TRANSICION_NEGATIVA;
+			} else {
 
-			if (!metaDerecha) {
-
-				if (estadoEspacioFilasIzquierda == 0) {
-
-					if (mapa[xCamello - 1][yCamello] != '#') {
-//						System.out.println("Hueco izquierda");
-						return ESTADOS.HUECO_IZQUIERDA_OPTIMO;
+				if (distanciaInfectadoActual < distanciaMenorJugadorInfectado && distanciatoChungo > 3) {
+					// ha reducido la dist entre infectado y jugador y mantiene alejado al chungo
+					if (distanciaInfectadoActual < 5) {
+						return ESTADOS.INFECTADO_CERCA;
 					}
-					if (mapa[xCamello - 1][yCamello] == '#' && mapa[xCamello][yCamello - 1] != '#') {
-						return ESTADOS.HUECO_ARRIBA;
-//						System.out.println("Obstaculo izquierda y hueco arriba");
-					}
-					if (mapa[xCamello - 1][yCamello] == '#' && mapa[xCamello][yCamello + 1] != '#') {
-						return ESTADOS.HUECO_ABAJO;
-//						System.out.println("Obstaculo izquierda  y hueco abajo");
-					}
-
+					return ESTADOS.TRANSICION_POSITIVA;
 				}
 
-				if (estadoEspacioFilasIzquierda == 1) {
-
-					// orden inicial hueco arriba despues hueco derecha asi funciona
-
-					if (mapa[xCamello - 1][yCamello] != '#') {
-//						System.out.println("Hueco izquierda");
-						return ESTADOS.HUECO_IZQUIERDA;
+				if (distanciaInfectadoActual >= distanciaMenorJugadorInfectado || distanciatoChungo < 3) {
+					if (distanciaInfectadoActual < 5) {
+						return ESTADOS.INFECTADO_CERCA;
 					}
-
-					if (mapa[xCamello][yCamello - 1] != '#') {
-//						System.out.println("Hueco Arriba");
-						return ESTADOS.HUECO_ARRIBA;
-					}
-
-				}
-
-				if (estadoEspacioFilasIzquierda == 2) {
-					if (mapa[xCamello][yCamello + 1] != '#') {
-//						System.out.println("Hueco Abajo");
-						return ESTADOS.HUECO_ABAJO;
-					}
-
-					if (mapa[xCamello - 1][yCamello] != '#') {
-//						System.out.println("Hueco derecha");
-						return ESTADOS.HUECO_IZQUIERDA;
-					}
-
+					return ESTADOS.TRANSICION_NEGATIVA;
 				}
 
 			}
@@ -440,163 +359,113 @@ public class Controlador {
 
 	}
 
-	public static int caminoMayorDesplazamientoDerecha(StateObservation so) {
+	public static double getDistanciaJugadorNPCCercano(StateObservation so) {
 
-		// Si ya esta en la mejor fila 0
-		// Si la fila mejor esta en una fila menor 1 // hacia arriba
-		// Si la fila mejor esta en una fila mayor 2 // hacia abajo
-		int estado = 0;
-		double posicionCamello[] = getPosicionJugador(so);
-
-		char mapa[][] = getMapa(so);
-		// Compruebo si si la fila donde estoy hay 0 obstaculos es ya la mejor
-		int yCamello = (int) posicionCamello[1];
-		int xCamello = (int) posicionCamello[0];
-		int contadorEspacios = 0;
-		int contadorObstaculos = 0;
-//		System.out.println(xCamello + "  "+ yCamello);
-		// Compruebo si estoy ya en una fila donde no hay obstaculos
-		for (int i = xCamello; i < mapa.length - 1; i++) {
-			if (mapa[i][yCamello] == '#') {
-				contadorObstaculos++;
-			}
-		}
-		if (contadorObstaculos == 0) {
-//			System.out.println("Estas fila mejor");
-			return 0;
-		}
-
-		// Guardo el numero de obstaculos por fila
-		int espaciosFila[] = new int[7];
-		for (int fila = 1; fila < 8; fila++) {
-			contadorEspacios = 0;
-			int i = xCamello + 1;
-
-			while (mapa[i][fila] != '#' && i < mapa.length - 1) {
-				contadorEspacios++;
-				i++;
-			}
-
-			espaciosFila[fila - 1] = contadorEspacios;
-		}
-
-		int indiceFilaMejor = 0;
-		int aux = -1;
-		for (int i = 0; i < espaciosFila.length; i++) {
-			if (espaciosFila[i] > aux) {
-				indiceFilaMejor = i;
-				aux = espaciosFila[i];
-			}
-		}
-		indiceFilaMejor++;
-//		System.out.println("Fila menor: " + indiceFilaMenor);
-
-		// Compruebo si la fila del camello tine huecos iguales al mejor, es decir,
-		// puede ser el mejor
-		if (indiceFilaMejor == yCamello) {
-			return 0;
-		}
-
-		if (indiceFilaMejor > yCamello) {
-//			System.out.println("La fila mejor esta abajo");
-			return 2;
-		} else if (indiceFilaMejor < yCamello) {
-//			System.out.println("La fila mejor esta arriba");
-			return 1;
-		}
-
-		return -1;
-	}
-
-	public static int caminoMayorDesplazamientoIzquieda(StateObservation so) {
-
-		// Si ya esta en la mejor fila 0
-		// Si la fila mejor esta en una fila menor 1 // hacia arriba
-		// Si la fila mejor esta en una fila mayor 2 // hacia abajo
-		int estado = 0;
-		double posicionCamello[] = getPosicionJugador(so);
-
-		char mapa[][] = getMapa(so);
-		// Compruebo si si la fila donde estoy hay 0 obstaculos es ya la mejor
-		int yCamello = (int) posicionCamello[1];
-		int xCamello = (int) posicionCamello[0];
-		int contadorEspacios = 0;
-		int contadorObstaculos = 0;
-//		System.out.println(xCamello + "  "+ yCamello);
-		// Compruebo si estoy ya en una fila donde no hay obstaculos
-		for (int i = xCamello; i > 0; i--) {
-			if (mapa[i][yCamello] == '#') {
-				contadorObstaculos++;
-			}
-		}
-		if (contadorObstaculos == 0) {
-//			System.out.println("Estas fila mejor");
-			return 0;
-		}
-
-		// Guardo el numero de obstaculos por fila
-		int espaciosFila[] = new int[7];
-		for (int fila = 1; fila < 8; fila++) {
-			contadorEspacios = 0;
-			int i = xCamello - 1;
-
-			while (mapa[i][fila] != '#' && i < 0) {
-				contadorEspacios++;
-				i--;
-			}
-
-			espaciosFila[fila - 1] = contadorEspacios;
-		}
-
-		int indiceFilaMejor = 0;
-		int aux = -1;
-		for (int i = 0; i < espaciosFila.length; i++) {
-			if (espaciosFila[i] > aux) {
-				indiceFilaMejor = i;
-				aux = espaciosFila[i];
-			}
-		}
-		indiceFilaMejor++;
-
-		// Compruebo si la fila del camello tine huecos iguales al mejor, es decir,
-		// puede ser el mejor
-		if (indiceFilaMejor == yCamello) {
-			return 0;
-		}
-
-		if (indiceFilaMejor > yCamello) {
-//			System.out.println("La fila mejor esta abajo");
-			return 2;
-		} else if (indiceFilaMejor < yCamello) {
-//			System.out.println("La fila mejor esta arriba");
-			return 1;
-		}
-
-		return -1;
-	}
-
-	public static double[] getPosicionJugador(StateObservation so) {
+		double dist = Double.MAX_VALUE;
 
 		Vector2d pos = so.getAvatarPosition();
 		double posicionJugador[] = new double[2];
+		double posicionNPC[] = new double[2];
 		posicionJugador[0] = pos.x / 16;
 		posicionJugador[1] = pos.y / 16;
-		// System.out.println(pos.x / 16 + " " + pos.y / 16 + " ori ");
+
+		ArrayList<Observation>[] posiciones = so.getNPCPositions(pos);
+
+		if (posiciones[0].size() > 0) {
+			Vector2d aux = posiciones[0].get(0).position;
+			posicionNPC[0] = aux.x / 16;
+			posicionNPC[1] = aux.y / 16;
+
+			double diferenciaX = posicionJugador[0] - posicionNPC[0];
+			double diferenciaY = posicionJugador[1] - posicionNPC[1];
+
+			dist = Math.sqrt(Math.pow(diferenciaX, 2) + Math.pow(diferenciaY, 2));
+
+			System.out.println(dist + " Distancia menor");
+		} else {
+			dist = 1000000000000.0;
+		}
+		
+
+		return dist;
+	}
+
+	public static double[] getPosicionJugadorMod(StateObservation so) {
+
+		double x = -1.0;
+		double y = -1.0;
+		boolean encontrado = false;
+		double posicionJugador[] = new double[2];
+		for (int j = 0; j < so.getObservationGrid()[0].length; j++) {
+			for (int i = 0; i < so.getObservationGrid().length; i++) {
+				if (so.getObservationGrid()[i][j].size() != 0) {
+					if (so.getObservationGrid()[i][j].get(0).itype == 1 && !encontrado) {
+						x = 2 * (i) + 2 * (i + 1);
+						y = 2 * (j) + 2 * (j + 1);
+						x = x / 4;
+						y = y / 4;
+						posicionJugador[0] = x;
+						posicionJugador[1] = y;
+						encontrado = true;
+					}
+				}
+
+			}
+		}
+
+//		System.out.print(x + " " + y + " Jugador ");
 		return posicionJugador;
 	}
 
-	public static void setDistanciaJugadorPortal(StateObservation so) {
-		Observation portal = so.getPortalsPositions()[0].get(0);
-		double xPortal = portal.position.x / 16;
+	public static double[] getPosicionChungo(StateObservation so) {
 
-		double[] posJufador = getPosicionJugador(so);
+		double x = -1.0;
+		double y = -1.0;
+		boolean encontrado = false;
+		double posicionJugadorChungo[] = new double[2];
+		for (int j = 0; j < so.getObservationGrid()[0].length; j++) {
+			for (int i = 0; i < so.getObservationGrid().length; i++) {
+				if (so.getObservationGrid()[i][j].size() != 0) {
+					if (so.getObservationGrid()[i][j].get(0).itype == 7 && !encontrado) {
+						x = 2 * (i) + 2 * (i + 1);
+						y = 2 * (j) + 2 * (j + 1);
+						x = x / 4;
+						y = y / 4;
+						posicionJugadorChungo[0] = x;
+						posicionJugadorChungo[1] = y;
+						encontrado = true;
+					}
+				}
 
-		double dis = Math.abs((xPortal - posJufador[0]));
-
-		if (dis < Controlador.distanciaJP) {
-			Controlador.distanciaJP = dis;
+			}
 		}
 
+//		System.out.print(x + " " + y + " Chungo ");
+		return posicionJugadorChungo;
+	}
+
+	public static double distanciaEuclideaJugadorChungo(StateObservation so) {
+		double dist;
+
+		double posJugador[] = getPosicionJugadorMod(so);
+		double posChungo[] = getPosicionChungo(so);
+
+		double diferenciaX = posJugador[0] - posChungo[0];
+		double diferenciaY = posJugador[1] - posChungo[1];
+
+		dist = Math.sqrt(Math.pow(diferenciaX, 2) + Math.pow(diferenciaY, 2));
+
+		return dist;
+	}
+
+	public static int numeroInfectados(StateObservation so) {
+		ArrayList<Observation>[] posicionesNPCs = so.getNPCPositions();
+		return posicionesNPCs[0].size();
+	}
+
+	public static int numeroSanos(StateObservation so) {
+		ArrayList<Observation>[] posicionesNPCs = so.getNPCPositions();
+		return posicionesNPCs[0].size();
 	}
 
 	public void getContadoresEstados() {
@@ -652,6 +521,33 @@ public class Controlador {
 			}
 			System.out.println();
 		}
+
+	}
+
+	public static void showMapaNuevo(StateObservation so) {
+
+		// itype 0 -> muros
+		// itype -> 1 Jugador
+		// itype -> 4 personaje infectado
+		// itype -> 6 personaje bueno
+		// itype -> 7 tio chungo
+
+		int numCol = so.getWorldDimension().width / so.getBlockSize();
+		int numFil = so.getWorldDimension().height / so.getBlockSize();
+
+		for (int i = 0; i < numFil; i++) {
+			for (int j = 0; j < numCol; j++) {
+				if (so.getObservationGrid()[j][i].size() != 0) {
+
+					System.out.print(so.getObservationGrid()[j][i].get(0).itype);
+				} else {
+					System.out.print('-');
+				}
+
+			}
+			System.out.println();
+		}
+
 	}
 
 }

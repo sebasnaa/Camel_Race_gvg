@@ -23,11 +23,11 @@ public class Test {
 		String[][] games = Utils.readGames(spGamesCollection);
 
 		// Game settings
-		boolean visuals;
+		boolean visuals = true;
 		int seed = new Random().nextInt();
 
 		// Game and level to play
-		int gameIdx = 15;
+		int gameIdx = 3;
 
 		String gameName = games[gameIdx][1];
 		String game = games[gameIdx][0];
@@ -36,20 +36,25 @@ public class Test {
 
 		int levelIdx = 0; // level names from 0 to 4 (game_lvlN.txt).
 		String level1 = game.replace(gameName, gameName + "_lvl" + levelIdx);
-		Controlador controlador;
+		
+//		ArcadeMachine.playOneGame(game, level1, recordActionsFile, seed);
+		
 
-		boolean training = false; // Modo entrenamiento, crea una nueva tabla Q y juega M partidas aleatorias
-		boolean probarNiveles = true;
+		
+		Controlador controlador;
+//
+		boolean training = true; // Modo entrenamiento, crea una nueva tabla Q y juega M partidas aleatorias
+		boolean probarNiveles = false;
 		boolean probarNivel = false;
 		boolean grafica = false;
 
 		if (training) // Crea la tabla Q a random y juega partidas con acciones aleatorias y sobre la
 						// tablaQ
 		{
-			visuals = false;
+			visuals = true;
 			boolean isTablaQRandom = true;
 			controlador = new Controlador(isTablaQRandom);
-			Controlador.numPartidasEntrenamiento = 100;
+			Controlador.numPartidasEntrenamiento = 1;
 
 			double[] Y = null;
 			double[] X = null;
@@ -130,6 +135,6 @@ public class Test {
 
 //		stateManager.getContadoresEstados();
 		Controlador.pintaQTableResumen();
-
+//
 	}
 }

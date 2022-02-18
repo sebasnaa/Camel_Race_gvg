@@ -69,14 +69,18 @@ public class AgenteEntrenamiento extends AbstractPlayer {
 		// 01 - PERCEPCIÓN DEL ENTORNO
 		// -----------------------------------------------------------------------
 
-		int distanciaJP = Controlador.distanciaMeta(stateObs);
+		
 
 		// Estado actual
-		ESTADOS estadoActual = Controlador.getEstado(stateObs, Controlador.getMapa(stateObs), distanciaJP);
+		int infectados = Controlador.numeroInfectados(stateObs);
+		double jugadorChungo = Controlador.distanciaEuclideaJugadorChungo(stateObs);
+		double jugadorInfectadoCercano = Controlador.getDistanciaJugadorNPCCercano(stateObs);
+		
+		ESTADOS estadoActual = Controlador.getEstado(stateObs,Controlador.getMapa(stateObs), infectados,jugadorChungo,jugadorInfectadoCercano);
 		estadoActual.incrementa();
 		System.out.println("Estado actual: " + estadoActual.toString());
 
-		Controlador.pintaQTable(estadoActual);
+		// Controlador.pintaQTable(estadoActual);
 
 		ACTIONS action;
 
@@ -97,20 +101,20 @@ public class AgenteEntrenamiento extends AbstractPlayer {
 			// Usamos la tabla
 			action = Controlador.getAccionMaxQ(estadoActual);
 		}
-
+//
 		System.out.println(" Accion elegida: " + action.toString());
 
 		// Calcular el estado siguiente
-		ESTADOS estadoSiguiente = Controlador.getEstadoFuturo(stateObs, action, distanciaJP);
-
+		ESTADOS estadoSiguiente = Controlador.getEstadoFuturo(stateObs, action, infectados,jugadorChungo,jugadorInfectadoCercano);
+	
 		System.out.println("Proximo estado " + estadoSiguiente.toString());
 
 		double q = Controlador.Q.get(new EstadoAccion(estadoActual, action));
 
 		System.out.println("Valor actual q <" + estadoActual.toString() + "," + action.toString() + "> = " + q);
 
-		double maxQ = maxQ(estadoSiguiente);
-//		double maxQ = maxQ(estadoActual);
+//		double maxQ = maxQ(estadoSiguiente);
+		double maxQ = maxQ(estadoActual);
 //		double r = StateManager.R.get(new EstadoAccion(estadoActual, action));
 		double r = Controlador.R.get(new EstadoAccion(estadoSiguiente, action));
 		double value = q + alpha * (r + gamma * maxQ - q);
